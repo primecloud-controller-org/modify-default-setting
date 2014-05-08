@@ -7,10 +7,6 @@
 AWS_ACCESS_ID="XXXXXXXXXXXXXXXXXXX"
 AWS_SECRET_KEY="YYYYYYYYYYYYYYYYYYY"
 
-PCC_USER="test"
-PCC_USER_PASS="test"
-
-
 #
 DOMAIN_NAME="dev.primecloud-controller.org"
 HOST_NAME=`hostname`

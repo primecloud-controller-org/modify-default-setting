@@ -57,12 +57,12 @@ fi
 
 
 
-echo "[1/8] Set tomcat user password"
+echo "[ 1/10] Set tomcat user password"
 #Set tomcat user password
 echo "tomcat:${TOMCAT_PASS}" | /usr/sbin/chpasswd -c MD5 >/dev/null 2>&1
 
 
-echo "[2/8] Set puppet parameters"
+echo "[ 2/10] Set puppet parameters"
 #Create fileserver.conf for puppet-server
 sed -i -e "s/^\([^#].*\)allow \*\..*/\1allow \*\.${DOMAIN_NAME}/" /etc/puppet/fileserver.conf
 
@@ -78,8 +78,6 @@ cat > /etc/puppet/autosign.conf << AUTOSIGN_CONF_EOF
 *.${DOMAIN_NAME}
 AUTOSIGN_CONF_EOF
 
-chkconfig puppetmaster on
-
 /etc/init.d/puppetmaster start >/dev/null 2>&1
 sleep 5
 
@@ -87,24 +85,17 @@ sleep 5
 /etc/init.d/puppetmaster stop > /dev/null 2>&1
 sleep 5
 
-
-/etc/init.d/puppetmaster start > /dev/null 2>&1
-sleep 5
-
 chown tomcat:tomcat /etc/puppet/manifests/site.pp
 chown tomcat:tomcat /etc/puppet/manifests/auto
 
 
-chkconfig tomcat on
-chkconfig httpd on
-
 #
 #set mysql
-echo "[3/8] Set database password"
+echo "[ 3/10] Set database password"
 /etc/init.d/mysqld start > /dev/null 2>&1
 sleep 20
 
-mysqladmin -uroot --password="${MYSQL_PASS}" status > /dev/null 2>&1
+mysqladmin -uroot --password="${MYSQL_ROOT_PASS}" status > /dev/null 2>&1
 if [ $? -ne 0 ]; then
         /etc/init.d/mysqld stop > /dev/null 2>&1
         sleep 20
@@ -132,7 +123,7 @@ fi
 
 mysql -uroot -p${MYSQL_ROOT_PASS}<< SET_ADC_USER_PASS_EOF
 SET PASSWORD FOR ${ADC_DATABASE_USER}@'localhost' = password('${ADC_DATABASE_PASS}');
-SET PASSWORD FOR ${ADC_DATABASE_USER}@'127.0.0.1' = password('${ADC_DATABASE_PASS}');
+SET PASSWORD FOR ${ADC_DATABASE_USER}@'%' = password('${ADC_DATABASE_PASS}');
 SET_ADC_USER_PASS_EOF
 
 if [ $? -ne 0 ]; then
@@ -142,6 +133,7 @@ fi
 
 mysql -uroot -p${MYSQL_ROOT_PASS}<< SET_ZABBIX_USER_PASS_EOF
 SET PASSWORD FOR ${ZABBIX_DATABASE_USER}@'localhost' = password('${ZABBIX_DATABASE_PASS}');
+SET PASSWORD FOR ${ZABBIX_DATABASE_USER}@'%' = password('${ZABBIX_DATABASE_PASS}');
 SET_ZABBIX_USER_PASS_EOF
 
 if [ $? -ne 0 ]; then
@@ -150,12 +142,16 @@ if [ $? -ne 0 ]; then
 fi
 
 #Set defaultVPC parameters
-mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=1;"
+mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET AWS_ACCESS_ID='${AWS_ACCESS_ID}',AWS_SECRET_KEY='${AWS_SECRET_KEY}',DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=1;"
 mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1 WHERE PLATFORM_NO=1;"
 
+#Set zabbix parameters
+echo "[ 4/10] Set application parameters for zabbix"
+sed -i -e "s/\(\$DB\[\"USER\"\][[:space:]]*=\).*/\1 '$ZABBIX_DATABASE_USER';/" /etc/zabbix/zabbix.conf.php
+sed -i -e "s/\(\$DB\[\"PASSWORD\"\][[:space:]]*=\).*/\1 '$ZABBIX_DATABASE_PASS';/" /etc/zabbix/zabbix.conf.php
 
 #Set /opt/adc/conf/config/properties
-echo "[4/8] Set application parameters for pcc-core"
+echo "[ 5/10] Set application parameters for pcc-core"
 
 sed -i -e "s/db.username =.*/db.username = $ADC_DATABASE_USER/" /opt/adc/conf/config.properties
 sed -i -e "s/db.password =.*/db.password = $ADC_DATABASE_PASS/" /opt/adc/conf/config.properties
@@ -169,30 +165,39 @@ sed -i -e "s/puppet.masterHost =.*/puppet.masterHost = $HOST_NAME/" /opt/adc/con
 sed -i -e "s/zabbix.display =.*/zabbix.display = https:\/\/$PUBLICIP\/zabbix\//" /opt/adc/conf/config.properties
 
 #Set /opt/adc/iaassystem.ini for  iaasgateway
-echo "[5/8] Set application parameters for iaas-gateway"
+echo "[ 6/10] Set application parameters for iaas-gateway"
 
 sed -i -e "s/USER =.*/USER = $ADC_DATABASE_USER/" /opt/adc/iaasgw/iaassystem.ini
 sed -i -e "s/PASS =.*/PASS = $ADC_DATABASE_PASS/" /opt/adc/iaasgw/iaassystem.ini
+
+#Set /opt/adc/management-tool/config/management-config.properties for management tools
+echo "[ 7/10] Set application parameters for management tools"
 sed -i -e "s/ZABBIX_DB_USER=.*/ZABBIX_DB_USER=$ZABBIX_DATABASE_USER/" /opt/adc/management-tool/config/management-config.properties
 sed -i -e "s/ZABBIX_DB_PASSWORD=.*/ZABBIX_DB_PASSWORD=$ZABBIX_DATABASE_PASS/" /opt/adc/management-tool/config/management-config.properties
+sed -i -e "s/AWS_ACCESS_ID=.*/AWS_ACCESS_ID=${AWS_ACCESS_ID}/" /opt/adc/management-tool/config/management-config.properties
+sed -i -e "s/AWS_SECRET_KEY=.*/AWS_SECRET_KEY=${AWS_SECRET_KEY}/" /opt/adc/management-tool/config/management-config.properties
 
-#Set /etc/pam.d/openvpn
-echo "[6/8] Set application parameters for openvpn"
+#Set /etc/pam.d/openvpn and /etc/openvpn/loaduserDB.sh for openvpn
+echo "[ 8/10] Set application parameters for openvpn"
 
 sed -i -e "s/user=\w\+/user=$ADC_DATABASE_USER/" /etc/pam.d/openvpn
 sed -i -e "s/passwd=\w\+/passwd=$ADC_DATABASE_PASS/" /etc/pam.d/openvpn
-
 sed -i -e "s/USERNAME=\"\w\+\"/USERNAME=\"$ADC_DATABASE_USER\"/" /etc/openvpn/loaduserDB.sh
 sed -i -e "s/PASSWORD=\"\w\+\"/PASSWORD=\"$ADC_DATABASE_PASS\"/" /etc/openvpn/loaduserDB.sh
 
 #create credential set  clinet.zip for vpn client
-echo "[7/8] Create credential client.zip for openvpn"
+echo "[ 9/10] Create credential client.zip for openvpn"
 if [ ! -f ${BASE_DIR}/createCredential.sh ]; then
   echo "${BASE_DIR}/createCredential.sh: No such file"
   exit 1
 fi
 
 sh ${BASE_DIR}/createCredential.sh
+
+if [ $? -ne 0 ]; then
+	echo "Error: Create credential client.zip failed"
+	exit 1
+fi
 
 cd /etc/openvpn/easy-rsa/keys/client
 zip -P ${CLIENT_ZIP_PASS} -r client.zip * > /dev/null
@@ -206,39 +211,51 @@ cp /etc/openvpn/easy-rsa/keys/client/client.zip /opt/adc/keys
 cd ${BASE_DIR}
 
 #Set /var/named/chroot/etc/name.conf
-echo "[8/8] Set bind parameters"
+echo "[10/10] Set bind parameters"
 
 NODE_NAME=`hostname -s`
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/" /var/named/chroot/etc/named.conf
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
 sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
+cp /var/named/data/dev.primecloud-controller.org.zone /var/named/data/$DOMAIN_NAME.zone
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
+cp /var/named/data/dev.primecloud-controller.org.rev /var/named/data/$DOMAIN_NAME.rev
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
 sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
+cp /var/named/data/dev.primecloud-controller.org.vpc.rev /var/named/data/$DOMAIN_NAME.vpc.rev
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/localhost.rev
 sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/localhost.rev
 
-/etc/init.d/named restart > /dev/null 2>&1
 
-#Create PCC User
-cd /opt/adc/management-tool/bin
-./pcc-show-user.sh | grep -q ${PCC_USER}
+#Set chkconfig
+chkconfig named on
+chkconfig openvpn on
+chkconfig puppetmaster on
+chkconfig mysql on
+chkconfig tomcat on
+chkconfig httpd on
+chkconfig zabbix-agent on
+chkconfig zabbix-server on
 
-if [ $? -eq 0 ]; then
-        ./pcc-
-else
-        ./pcc-add-user.sh -u ${PCC_USER} -p ${PCC_USER_PASSWORD}
-        ./pcc-enable-user-aws.sh -u ${PCC_USER}  -P ec2_tokyo
-fi
+#start services
+echo ""
+echo ""
+echo "-------------------------------------"
 
-#Set defaultVPC parameters
-mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET AWS_ACCESS_ID='${AWS_ACCESS_ID}',AWS_SECRET_KEY='${AWS_SECRET_KEY}',DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=1;"
-mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1 WHERE PLATFORM_NO=1;"
+/etc/init.d/named start
+/etc/init.d/openvpn start
+/etc/init.d/puppetmaster start
+/etc/init.d/mysql start
+/etc/init.d/tomcat start
+/etc/init.d/httpd start
+/etc/init.d/zabbix-agent start
+/etc/init.d/zabbix-server start
+
 
 exit 0
 
