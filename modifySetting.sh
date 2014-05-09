@@ -19,6 +19,8 @@ LOCAL_NETWORK=`curl -s -f http://169.254.169.254/latest/meta-data/network/interf
 PUBLICIP=`curl -s -f http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/ipv4-associations/`
 SUBNET_ID=`curl -s -f http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/subnet-id/`
 VPC_ID=`curl -s -f http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/vpc-id/`
+AVAILABILITY_ZONE=`curl -s -f http://169.254.169.254/latest/meta-data/placement/availability-zone`
+
 
 if [ ! -n "${LOCAL_NETWORK}" ]; then
         echo "Cannot Get vpc-ipv4-cider-block"
@@ -35,6 +37,10 @@ if [ ! -n "${SUBNET_ID}" ]; then
 fi
 if [ ! -n "${VPC_ID}" ]; then
         echo "Cannot Get vpc-id"
+        exit 1
+fi
+if [ ! -n "${AVAILABILITY_ZONE}" ]; then
+        echo "Cannot Get availability-zone"
         exit 1
 fi
 
@@ -57,12 +63,48 @@ fi
 
 
 
-echo "[ 1/10] Set tomcat user password"
+#
+#
+#Set /var/named/chroot/etc/name.conf
+echo "[ 1/10] Set bind parameters"
+
+NODE_NAME=`hostname -s`
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/" /var/named/chroot/etc/named.conf
+
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
+if [ ! -f /var/named/data/$DOMAIN_NAME.zone ]; then
+	cp /var/named/data/dev.primecloud-controller.org.zone /var/named/data/$DOMAIN_NAME.zone
+fi
+
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
+if [ ! -f /var/named/data/$DOMAIN_NAME.rev ]; then
+	cp /var/named/data/dev.primecloud-controller.org.rev /var/named/data/$DOMAIN_NAME.rev
+fi
+
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
+if [ ! -f /var/named/data/$DOMAIN_NAME.vpc.rev ]; then
+	cp /var/named/data/dev.primecloud-controller.org.vpc.rev /var/named/data/$DOMAIN_NAME.vpc.rev
+fi
+
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/localhost.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/localhost.rev
+
+/etc/init.d/named start > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+	echo "Error: Set bind parameters failed"
+	exit 1
+fi
+
+
+echo "[ 2/10] Set tomcat user password"
 #Set tomcat user password
 echo "tomcat:${TOMCAT_PASS}" | /usr/sbin/chpasswd -c MD5 >/dev/null 2>&1
 
 
-echo "[ 2/10] Set puppet parameters"
+echo "[ 3/10] Set puppet parameters"
 #Create fileserver.conf for puppet-server
 sed -i -e "s/^\([^#].*\)allow \*\..*/\1allow \*\.${DOMAIN_NAME}/" /etc/puppet/fileserver.conf
 
@@ -91,7 +133,7 @@ chown tomcat:tomcat /etc/puppet/manifests/auto
 
 #
 #set mysql
-echo "[ 3/10] Set database password"
+echo "[ 4/10] Set database password"
 /etc/init.d/mysqld start > /dev/null 2>&1
 sleep 20
 
@@ -106,8 +148,7 @@ if [ $? -ne 0 ]; then
 update mysql.user set password=password('${MYSQL_ROOT_PASS}') where user='root';
 flush privileges;
 PASSWORD_RECOVERY
-
-        /etc/init.d/mysqld stop >/dev/null 2>&1
+/etc/init.d/mysqld stop >/dev/null 2>&1
         sleep 20
         /etc/init.d/mysqld start >/dev/null 2>&1
         sleep 20
@@ -143,15 +184,18 @@ fi
 
 #Set defaultVPC parameters
 mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET AWS_ACCESS_ID='${AWS_ACCESS_ID}',AWS_SECRET_KEY='${AWS_SECRET_KEY}',DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=1;"
-mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1 WHERE PLATFORM_NO=1;"
+mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1,AVAILABILITY_ZONE='${AVAILABILITY_ZONE}' WHERE PLATFORM_NO=1;"
 
 #Set zabbix parameters
-echo "[ 4/10] Set application parameters for zabbix"
+echo "[ 5/10] Set application parameters for zabbix"
 sed -i -e "s/\(\$DB\[\"USER\"\][[:space:]]*=\).*/\1 '$ZABBIX_DATABASE_USER';/" /etc/zabbix/zabbix.conf.php
 sed -i -e "s/\(\$DB\[\"PASSWORD\"\][[:space:]]*=\).*/\1 '$ZABBIX_DATABASE_PASS';/" /etc/zabbix/zabbix.conf.php
 
+sed -i -e "s/DBUser=root/DBUser=${ZABBIX_DATABASE_USER}/" /etc/zabbix/zabbix_server.conf
+sed -i -e "s/^# DBPassword=/DBPassword=${ZABBIX_DATABASE_PASS}/" /etc/zabbix/zabbix_server.conf
+
 #Set /opt/adc/conf/config/properties
-echo "[ 5/10] Set application parameters for pcc-core"
+echo "[ 6/10] Set application parameters for pcc-core"
 
 sed -i -e "s/db.username =.*/db.username = $ADC_DATABASE_USER/" /opt/adc/conf/config.properties
 sed -i -e "s/db.password =.*/db.password = $ADC_DATABASE_PASS/" /opt/adc/conf/config.properties
@@ -165,20 +209,20 @@ sed -i -e "s/puppet.masterHost =.*/puppet.masterHost = $HOST_NAME/" /opt/adc/con
 sed -i -e "s/zabbix.display =.*/zabbix.display = https:\/\/$PUBLICIP\/zabbix\//" /opt/adc/conf/config.properties
 
 #Set /opt/adc/iaassystem.ini for  iaasgateway
-echo "[ 6/10] Set application parameters for iaas-gateway"
+echo "[ 7/10] Set application parameters for iaas-gateway"
 
 sed -i -e "s/USER =.*/USER = $ADC_DATABASE_USER/" /opt/adc/iaasgw/iaassystem.ini
 sed -i -e "s/PASS =.*/PASS = $ADC_DATABASE_PASS/" /opt/adc/iaasgw/iaassystem.ini
 
 #Set /opt/adc/management-tool/config/management-config.properties for management tools
-echo "[ 7/10] Set application parameters for management tools"
+echo "[ 8/10] Set application parameters for management tools"
 sed -i -e "s/ZABBIX_DB_USER=.*/ZABBIX_DB_USER=$ZABBIX_DATABASE_USER/" /opt/adc/management-tool/config/management-config.properties
 sed -i -e "s/ZABBIX_DB_PASSWORD=.*/ZABBIX_DB_PASSWORD=$ZABBIX_DATABASE_PASS/" /opt/adc/management-tool/config/management-config.properties
 sed -i -e "s/AWS_ACCESS_ID=.*/AWS_ACCESS_ID=${AWS_ACCESS_ID}/" /opt/adc/management-tool/config/management-config.properties
 sed -i -e "s/AWS_SECRET_KEY=.*/AWS_SECRET_KEY=${AWS_SECRET_KEY}/" /opt/adc/management-tool/config/management-config.properties
 
 #Set /etc/pam.d/openvpn and /etc/openvpn/loaduserDB.sh for openvpn
-echo "[ 8/10] Set application parameters for openvpn"
+echo "[ 9/10] Set application parameters for openvpn"
 
 sed -i -e "s/user=\w\+/user=$ADC_DATABASE_USER/" /etc/pam.d/openvpn
 sed -i -e "s/passwd=\w\+/passwd=$ADC_DATABASE_PASS/" /etc/pam.d/openvpn
@@ -186,7 +230,7 @@ sed -i -e "s/USERNAME=\"\w\+\"/USERNAME=\"$ADC_DATABASE_USER\"/" /etc/openvpn/lo
 sed -i -e "s/PASSWORD=\"\w\+\"/PASSWORD=\"$ADC_DATABASE_PASS\"/" /etc/openvpn/loaduserDB.sh
 
 #create credential set  clinet.zip for vpn client
-echo "[ 9/10] Create credential client.zip for openvpn"
+echo "[10/10] Create credential client.zip for openvpn"
 if [ ! -f ${BASE_DIR}/createCredential.sh ]; then
   echo "${BASE_DIR}/createCredential.sh: No such file"
   exit 1
@@ -210,33 +254,12 @@ cp /etc/openvpn/easy-rsa/keys/client/client.zip /opt/adc/keys
 
 cd ${BASE_DIR}
 
-#Set /var/named/chroot/etc/name.conf
-echo "[10/10] Set bind parameters"
-
-NODE_NAME=`hostname -s`
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/" /var/named/chroot/etc/named.conf
-
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
-cp /var/named/data/dev.primecloud-controller.org.zone /var/named/data/$DOMAIN_NAME.zone
-
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
-cp /var/named/data/dev.primecloud-controller.org.rev /var/named/data/$DOMAIN_NAME.rev
-
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
-cp /var/named/data/dev.primecloud-controller.org.vpc.rev /var/named/data/$DOMAIN_NAME.vpc.rev
-
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/localhost.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/localhost.rev
-
 
 #Set chkconfig
 chkconfig named on
 chkconfig openvpn on
 chkconfig puppetmaster on
-chkconfig mysql on
+chkconfig mysqld on
 chkconfig tomcat on
 chkconfig httpd on
 chkconfig zabbix-agent on
@@ -245,17 +268,26 @@ chkconfig zabbix-server on
 #start services
 echo ""
 echo ""
-echo "-------------------------------------"
+echo "------------------------------------------------"
 
-/etc/init.d/named start
+/etc/init.d/named restart
 /etc/init.d/openvpn start
 /etc/init.d/puppetmaster start
-/etc/init.d/mysql start
+/etc/init.d/mysqld restart
 /etc/init.d/tomcat start
 /etc/init.d/httpd start
 /etc/init.d/zabbix-agent start
 /etc/init.d/zabbix-server start
 
+echo "------------------------------------------------"
+echo "Setup is finishded."
+echo ""
+echo " PCC    Login URL https://${PUBLICIP}/auto-web/"
+echo " Zabbix Login URL https://${PUBLICIP}/zabbix/"
+
+echo "Sample username and password are below" 
+echo "username/ password : test/test"
+echo "------------------------------------------------"
 
 exit 0
 
