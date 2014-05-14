@@ -19,7 +19,7 @@ LOCAL_NETWORK=`curl -s -f http://169.254.169.254/latest/meta-data/network/interf
 PUBLICIP=`curl -s -f http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/ipv4-associations/`
 SUBNET_ID=`curl -s -f http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/subnet-id/`
 VPC_ID=`curl -s -f http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/vpc-id/`
-AVAILABILITY_ZONE=`curl -s -f http://169.254.169.254/latest/meta-data/placement/availability-zone`
+AVAILABILITY_ZONE=`curl -s -f http://169.254.169.254/latest/meta-data/placement/availability-zone/`
 
 
 if [ ! -n "${LOCAL_NETWORK}" ]; then
@@ -218,8 +218,8 @@ sed -i -e "s/PASS =.*/PASS = $ADC_DATABASE_PASS/" /opt/adc/iaasgw/iaassystem.ini
 echo "[ 8/10] Set application parameters for management tools"
 sed -i -e "s/ZABBIX_DB_USER=.*/ZABBIX_DB_USER=$ZABBIX_DATABASE_USER/" /opt/adc/management-tool/config/management-config.properties
 sed -i -e "s/ZABBIX_DB_PASSWORD=.*/ZABBIX_DB_PASSWORD=$ZABBIX_DATABASE_PASS/" /opt/adc/management-tool/config/management-config.properties
-sed -i -e "s/AWS_ACCESS_ID=.*/AWS_ACCESS_ID=${AWS_ACCESS_ID}/" /opt/adc/management-tool/config/management-config.properties
-sed -i -e "s/AWS_SECRET_KEY=.*/AWS_SECRET_KEY=${AWS_SECRET_KEY}/" /opt/adc/management-tool/config/management-config.properties
+sed -i -e "s#AWS_ACCESS_ID=.*#AWS_ACCESS_ID=${AWS_ACCESS_ID}#" /opt/adc/management-tool/config/management-config.properties
+sed -i -e "s#AWS_SECRET_KEY=.*#AWS_SECRET_KEY=${AWS_SECRET_KEY}#" /opt/adc/management-tool/config/management-config.properties
 
 #Set /etc/pam.d/openvpn and /etc/openvpn/loaduserDB.sh for openvpn
 echo "[ 9/10] Set application parameters for openvpn"
@@ -270,8 +270,8 @@ echo ""
 echo ""
 echo "------------------------------------------------"
 
-/etc/init.d/named restart
 /etc/init.d/openvpn start
+/etc/init.d/named restart
 /etc/init.d/puppetmaster start
 /etc/init.d/mysqld restart
 /etc/init.d/tomcat start
