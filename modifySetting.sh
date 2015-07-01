@@ -71,26 +71,26 @@ echo "[ 1/10] Set bind parameters"
 NODE_NAME=`hostname -s`
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/" /var/named/chroot/etc/named.conf
 
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.zone
-if [ ! -f /var/named/data/$DOMAIN_NAME.zone ]; then
-	cp /var/named/data/dev.primecloud-controller.org.zone /var/named/data/$DOMAIN_NAME.zone
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.zone
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/dev.primecloud-controller.org.zone
+if [ ! -f /var/named/chroot/etc/$DOMAIN_NAME.zone ]; then
+	cp /var/named/chroot/etc/dev.primecloud-controller.org.zone /var/named/chroot/etc/$DOMAIN_NAME.zone
 fi
 
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.rev
-if [ ! -f /var/named/data/$DOMAIN_NAME.rev ]; then
-	cp /var/named/data/dev.primecloud-controller.org.rev /var/named/data/$DOMAIN_NAME.rev
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/dev.primecloud-controller.org.local.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/dev.primecloud-controller.org.rev
+if [ ! -f /var/named/chroot/etc/$DOMAIN_NAME.local.rev ]; then
+	cp /var/named/chroot/etc/dev.primecloud-controller.org.rev /var/named/chroot/etc/$DOMAIN_NAME.local.rev
 fi
 
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/dev.primecloud-controller.org.vpc.rev
-if [ ! -f /var/named/data/$DOMAIN_NAME.vpc.rev ]; then
-	cp /var/named/data/dev.primecloud-controller.org.vpc.rev /var/named/data/$DOMAIN_NAME.vpc.rev
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/dev.primecloud-controller.org.vpc.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/dev.primecloud-controller.org.vpc.rev
+if [ ! -f /var/named/chroot/etc/$DOMAIN_NAME.vpc.rev ]; then
+	cp /var/named/chroot/etc/dev.primecloud-controller.org.vpc.rev /var/named/chroot/etc/$DOMAIN_NAME.vpc.rev
 fi
 
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/data/localhost.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/data/localhost.rev
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/localhost.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/localhost.rev
 
 /etc/init.d/named start > /dev/null 2>&1
 if [ $? -ne 0 ]; then

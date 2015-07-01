@@ -140,11 +140,34 @@ cp /etc/openvpn/easy-rsa/keys/ec2-vpnclient.key /etc/openvpn/
 #set nonpassword clinent certificate
 openssl rsa -in /etc/openvpn/easy-rsa/keys/ec2-vpnclient.key -out keys/ec2-vpnclient.key.nopass
 
-cp /etc/openvpn/client.conf /etc/openvpn/easy-rsa/keys/
+#create client.conf
+cat << EOF > /etc/openvpn/easy-rsa/keys/client.conf
+client
+dev tun
+proto udp
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca ca.crt
+cert aws-vpnclient.crt
+key aws-vpnclient.key.nopass
+ns-cert-type server
+tls-auth ta.key 1
+comp-lzo
+verb 3
+auth-user-pass
+keepalive 10 60
+fragment 1426
+mssfix
+EOF
+
 
 #create startup/shutdown script for vpn client
 touch /etc/openvpn/easy-rsa/keys/openvpn-startup /etc/openvpn/easy-rsa/keys/openvpn-shutdown
 chmod a+x /etc/openvpn/easy-rsa/keys/openvpn-startup /etc/openvpn/easy-rsa/keys/openvpn-shutdown
+
+
 
 
 #copy credential set for vpn client
@@ -155,8 +178,4 @@ cp ca.crt ec2-vpnclient.crt client.conf ec2-vpnclient.key.nopass openvpn-startup
 exec 1>&3 2>&1
 
 exit 0
-
-htpasswd -b -c -m /etc/httpd/conf/.htpasswd client ${CLIENT_ZIP_PASS}
-chmod 644 /etc/httpd/conf/.htpasswd
-cp /etc/openvpn/easy-rsa/keys/client/client.zip /opt/adc/keys
 
