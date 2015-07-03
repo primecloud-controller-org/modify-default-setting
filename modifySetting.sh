@@ -78,15 +78,15 @@ if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.zone ]; then
 fi
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.local.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/namede/dev.primecloud-controller.org.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.rev
 if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.local.rev ]; then
 	cp /var/named/chroot/etc/named/dev.primecloud-controller.org.rev /var/named/chroot/etc/named/$DOMAIN_NAME.local.rev
 fi
 
-sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.vpc.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.vpc.rev
+sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.vpn.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.vpn.rev
 if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.vpc.rev ]; then
-	cp /var/named/chroot/etc/named/dev.primecloud-controller.org.vpc.rev /var/named/chroot/etc/named/$DOMAIN_NAME.vpc.rev
+	cp /var/named/chroot/etc/named/dev.primecloud-controller.org.vpn.rev /var/named/chroot/etc/named/$DOMAIN_NAME.vpn.rev
 fi
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/localhost.rev
@@ -182,9 +182,13 @@ if [ $? -ne 0 ]; then
         exit 1
 fi
 
+#Enable test user
+mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1,AVAILABILITY_ZONE='${AVAILABILITY_ZONE}' WHERE PLATFORM_NO=2;"
+
+/opt/adc/management-tool/bin/pcc-enable-user-aws.sh -u test -P aws_vpc_tokyo
+
 #Set defaultVPC parameters
 mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET AWS_ACCESS_ID='${AWS_ACCESS_ID}',AWS_SECRET_KEY='${AWS_SECRET_KEY}',DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=2;"
-mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1,AVAILABILITY_ZONE='${AVAILABILITY_ZONE}' WHERE PLATFORM_NO=2;"
 
 #Set zabbix parameters
 echo "[ 5/10] Set application parameters for zabbix"
