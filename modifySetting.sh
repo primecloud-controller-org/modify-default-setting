@@ -78,14 +78,14 @@ if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.zone ]; then
 fi
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.local.rev
-sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.rev
+sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.local.rev
 if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.local.rev ]; then
 	cp /var/named/chroot/etc/named/dev.primecloud-controller.org.rev /var/named/chroot/etc/named/$DOMAIN_NAME.local.rev
 fi
 
 sed -i -e "s/dev.primecloud-controller.org/$DOMAIN_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.vpn.rev
 sed -i -e "s/pcc01/$NODE_NAME/g" /var/named/chroot/etc/named/dev.primecloud-controller.org.vpn.rev
-if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.vpc.rev ]; then
+if [ ! -f /var/named/chroot/etc/named/$DOMAIN_NAME.vpn.rev ]; then
 	cp /var/named/chroot/etc/named/dev.primecloud-controller.org.vpn.rev /var/named/chroot/etc/named/$DOMAIN_NAME.vpn.rev
 fi
 
@@ -182,11 +182,6 @@ if [ $? -ne 0 ]; then
         exit 1
 fi
 
-#Enable test user
-mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1,AVAILABILITY_ZONE='${AVAILABILITY_ZONE}' WHERE PLATFORM_NO=2;"
-
-/opt/adc/management-tool/bin/pcc-enable-user-aws.sh -u test -P aws_vpc_tokyo
-
 #Set defaultVPC parameters
 mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET AWS_ACCESS_ID='${AWS_ACCESS_ID}',AWS_SECRET_KEY='${AWS_SECRET_KEY}',DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=2;"
 
@@ -225,7 +220,19 @@ sed -i -e "s/ZABBIX_DB_PASSWORD=.*/ZABBIX_DB_PASSWORD=$ZABBIX_DATABASE_PASS/" /o
 sed -i -e "s#AWS_ACCESS_ID=.*#AWS_ACCESS_ID=${AWS_ACCESS_ID}#" /opt/adc/management-tool/config/management-config.properties
 sed -i -e "s#AWS_SECRET_KEY=.*#AWS_SECRET_KEY=${AWS_SECRET_KEY}#" /opt/adc/management-tool/config/management-config.properties
 
-#Set /etc/pam.d/openvpn and /etc/openvpn/loaduserDB.sh for openvpn
+##Enable test user
+mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE PLATFORM_AWS SET VPC_ID='${VPC_ID}',VPC=1,AVAILABILITY_ZONE='${AVAILABILITY_ZONE}' WHERE PLATFORM_NO=2;"
+
+cd /opt/adc/management-tool/bin
+./pcc-enable-user-aws.sh -u test -P aws_vpc_tokyo
+
+cd ${BASE_DIR}
+
+##Set defaultVPC parameters
+mysql -uadc -p${ADC_DATABASE_USER} -p${ADC_DATABASE_PASS} adc -e "UPDATE AWS_CERTIFICATE SET AWS_ACCESS_ID='${AWS_ACCESS_ID}',AWS_SECRET_KEY='${AWS_SECRET_KEY}',DEF_SUBNET='${SUBNET_ID}',DEF_LB_SUBNET='${SUBNET_ID}' WHERE PLATFORM_NO=2;"
+
+
+##Set /etc/pam.d/openvpn and /etc/openvpn/loaduserDB.sh for openvpn
 echo "[ 9/10] Set application parameters for openvpn"
 
 sed -i -e "s/user=\w\+/user=$ADC_DATABASE_USER/" /etc/pam.d/openvpn
